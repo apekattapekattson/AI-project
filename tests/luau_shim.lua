@@ -23,6 +23,22 @@ local function stripTypes(src)
 		elseif line:match("^%s*export%s+type%s") or line:match("^%s*type%s+[%w_]+%s*=") then
 			line = ""
 		else
+			-- Luau compound assignment -> plain Lua.
+			--   x += 1   ->   x = x + 1
+			-- Only fires on a simple lvalue (name, dotted, or [index]) at the
+			-- start of a statement, which is all this repo uses.
+			local lv, op, rhs = line:match("^(%s*[%w_][%w_%.%[%]\"']*)%s*([%+%-%*/])=%s*(.+)$")
+			if lv and rhs and not rhs:match("^=") then
+				line = ("%s = %s %s (%s)"):format(lv, lv:match("^%s*(.-)%s*$"), op, rhs:gsub("%s*$", ""))
+			end
+
+			-- Typed local declarations:
+			--   local x: { [number]: any } = {}   ->   local x = {}
+			--   local n: number = 0               ->   local n = 0
+			line = line:gsub("^(%s*local%s+[%w_]+)%s*:%s*%b{}%s*=", "%1 =")
+			line = line:gsub("^(%s*local%s+[%w_]+)%s*:%s*[%w_%.]+%b()%s*=", "%1 =")
+			line = line:gsub("^(%s*local%s+[%w_]+)%s*:%s*[%w_%.%?]+%s*=", "%1 =")
+
 			-- `expr :: Type` casts  ->  `expr`
 			line = line:gsub("%s*::%s*[%w_%.]+%s*%b()", "")
 			line = line:gsub("%s*::%s*%b{}", "")
